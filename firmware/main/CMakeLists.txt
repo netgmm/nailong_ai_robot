@@ -1,0 +1,23 @@
+idf_component_register(
+    SRCS
+        "main.c"
+        "app_wifi.c"
+        "app_backend.c"
+        "app_audio.c"
+        "app_display.c"
+    INCLUDE_DIRS
+        "."
+    REQUIRES
+        esp_wifi
+        esp_event
+        esp_netif
+        nvs_flash
+        esp_http_client
+        json
+        mbedtls
+        esp_timer
+        lvgl
+        esp_lvgl_port
+        espressif__esp_codec_dev
+        espressif__button
+)

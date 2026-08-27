@@ -1,0 +1,29 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# ===== 运行时数据（对话记录、记忆、调试音频等）=====
+data/
+
+# ===== 本地配置（含 API 密钥，严禁提交）=====
+config.yaml
+
+# ===== ESP-IDF 构建产物 =====
+firmware/build/
+firmware/sdkconfig
+firmware/sdkconfig.old
+
+# ===== ESP-IDF 组件管理器下载的组件（重新 build 会自动重新下载）=====
+firmware/managed_components/
+
+# ===== IDE / 编辑器 =====
+.idea/
+.vscode/
+firmware/.vscode/
+*.iml
+.clangd
+firmware/.clangd

@@ -1,0 +1,22 @@
+menu "奶龙语音终端配置"
+
+    config WIFI_SSID
+        string "WiFi SSID"
+        default "your_wifi_ssid"
+        help
+            要连接的 WiFi 名称。
+
+    config WIFI_PASSWORD
+        string "WiFi Password"
+        default ""
+        help
+            WiFi 密码（无密码的开放网络请留空）。
+
+    config BACKEND_BASE_URL
+        string "Backend base URL"
+        default "http://192.168.1.100:8000"
+        help
+            电脑后端服务的地址（含端口，不要以 / 结尾）。
+            例如 http://192.168.1.100:8000
+
+endmenu

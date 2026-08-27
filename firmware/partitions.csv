@@ -1,0 +1,7 @@
+# ESP32-S3-Box-3 自定义分区表（16MB flash）
+# app 分区 6MB，给 LVGL + 中文字体 + 全部组件留足空间
+# Name,    Type, SubType, Offset,   Size,     Flags
+nvs,       data, nvs,     0x9000,   0x6000,
+phy_init,  data, phy,     0xf000,   0x1000,
+factory,   app,  factory, 0x10000,  0x600000,
+storage,   data, spiffs,  0x610000, 0x9F0000,

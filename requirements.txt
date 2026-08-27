@@ -1,0 +1,8 @@
+# 奶龙情感陪伴AI —— 第三方依赖清单
+# 安装方式：pip install -r requirements.txt
+
+requests>=2.31.0     # 调用 OpenAI 兼容接口（HTTP 请求）
+PyYAML>=6.0.1        # 解析 config.yaml 配置文件
+fastapi>=0.110.0     # 后端 Web 服务框架
+uvicorn>=0.27.0      # ASGI 服务器（运行 FastAPI 服务）
+faster-whisper>=1.0.0   # 本地语音转文字（ASR）
