@@ -18,11 +18,15 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 # 优化等级（音频/HTTP 处理建议 O2）
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# LVGL 中文字体（屏幕显示对话需要）：思源黑体 SC 16px CJK，
-# 同时设为默认字体，这样对话区/状态栏不单独设字体也能显示中文。
+# LVGL 字体：中文显示使用自定义字体 lv_font_simhei_16（GB2312 全量 7446 字，
+# 由 simhei.ttf 用 lv_font_conv 生成，见 main/lv_font_simhei_16.c）。
+# 因此关闭 LVGL 内置 1338 字 CJK 字体（省约 1.2MB flash），
+# 默认字体用已启用的 Montserrat 14 兜底（代码中所有 Label 均显式指定中文字体）。
 # 注意：LVGL 9.x 已移除 simsun 字体；本项目走 Kconfig 配置（LV_CONF_SKIP=y），
 # esp-box 的 lv_conf.h 不会生效。
-CONFIG_LV_FONT_DEFAULT_SOURCE_HAN_SANS_SC_16_CJK=y
+CONFIG_LV_FONT_DEFAULT_MONTSERRAT_14=y
+# CONFIG_LV_FONT_SOURCE_HAN_SANS_SC_16_CJK is not set
+# CONFIG_LV_FONT_DEFAULT_SOURCE_HAN_SANS_SC_16_CJK is not set
 
 # 自定义分区表：默认 factory 分区只有 1MB，装不下带 LVGL 的固件
 CONFIG_PARTITION_TABLE_CUSTOM=y

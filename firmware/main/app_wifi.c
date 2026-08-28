@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdlib.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/event_groups.h"
 #include "esp_log.h"
@@ -12,16 +13,73 @@ static const char *TAG = "app_wifi";
 
 #define WIFI_CONNECTED_BIT BIT0
 #define WIFI_FAIL_BIT      BIT1
+#define WIFI_SCAN_TIMEOUT_MS 10000   /* 搜索 WiFi 超时：10 秒，找不到就停止连接 */
 #define MAX_RETRY          5
 
 static EventGroupHandle_t s_wifi_events;
 static int s_retry = 0;
 
+/* 扫描完成后检查目标 SSID 是否可见：可见才发起连接，找不到则停止连接 */
+static void handle_scan_done(void)
+{
+    uint16_t ap_num = 0;
+    esp_err_t ret = esp_wifi_scan_get_ap_num(&ap_num);
+    if (ret != ESP_OK || ap_num == 0) {
+        ESP_LOGW(TAG, "scan done, no AP found");
+        xEventGroupSetBits(s_wifi_events, WIFI_FAIL_BIT);
+        return;
+    }
+
+    wifi_ap_record_t *records = malloc(ap_num * sizeof(wifi_ap_record_t));
+    if (records == NULL) {
+        ESP_LOGE(TAG, "no mem for scan records");
+        xEventGroupSetBits(s_wifi_events, WIFI_FAIL_BIT);
+        return;
+    }
+    ret = esp_wifi_scan_get_ap_records(&ap_num, records);
+    if (ret != ESP_OK) {
+        free(records);
+        xEventGroupSetBits(s_wifi_events, WIFI_FAIL_BIT);
+        return;
+    }
+
+    bool found = false;
+    for (int i = 0; i < ap_num; i++) {
+        ESP_LOGI(TAG, "AP[%d] '%s' rssi=%d", i, records[i].ssid, records[i].rssi);
+        if (strcmp((const char *)records[i].ssid, CONFIG_WIFI_SSID) == 0) {
+            found = true;
+            break;
+        }
+    }
+    free(records);
+
+    if (found) {
+        ESP_LOGI(TAG, "target AP '%s' found, start connecting", CONFIG_WIFI_SSID);
+        esp_wifi_connect();
+    } else {
+        ESP_LOGW(TAG, "target AP '%s' not found, stop connecting", CONFIG_WIFI_SSID);
+        xEventGroupSetBits(s_wifi_events, WIFI_FAIL_BIT);
+    }
+}
+
 static void wifi_event_handler(void *arg, esp_event_base_t base,
                                int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
+        /* 先扫描目标 AP，找到才连接；10 秒内搜不到就停止连接 */
+        wifi_scan_config_t scan_cfg = {
+            .ssid = NULL,
+            .bssid = NULL,
+            .channel = 0,
+            .show_hidden = true,
+        };
+        esp_err_t ret = esp_wifi_scan_start(&scan_cfg, false);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "scan start failed: %s", esp_err_to_name(ret));
+            xEventGroupSetBits(s_wifi_events, WIFI_FAIL_BIT);
+        }
+    } else if (base == WIFI_EVENT && id == WIFI_EVENT_SCAN_DONE) {
+        handle_scan_done();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
         ESP_LOGW(TAG, "Disconnect, reason: %d", ((wifi_event_sta_disconnected_t *)data)->reason);
         if (s_retry < MAX_RETRY) {
@@ -69,13 +127,13 @@ esp_err_t app_wifi_start(void)
 
     EventBits_t bits = xEventGroupWaitBits(
         s_wifi_events, WIFI_CONNECTED_BIT | WIFI_FAIL_BIT,
-        pdFALSE, pdFALSE, pdMS_TO_TICKS(20000));
+        pdFALSE, pdFALSE, pdMS_TO_TICKS(WIFI_SCAN_TIMEOUT_MS));
 
     if (bits & WIFI_CONNECTED_BIT) {
         ESP_LOGI(TAG, "connected to AP");
         return ESP_OK;
     }
-    ESP_LOGE(TAG, "failed to connect");
+    ESP_LOGE(TAG, "failed to connect within %d ms", WIFI_SCAN_TIMEOUT_MS);
     return ESP_FAIL;
 }
 

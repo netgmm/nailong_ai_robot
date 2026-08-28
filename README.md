@@ -25,16 +25,17 @@
 
 ```
 nailong/
-├── main.py                      # FastAPI 后端服务（/health /chat /voice）
+├── main.py                      # FastAPI 后端服务（/health /chat /voice /ws/voice 流式）
 ├── config.yaml                  # 配置文件（API密钥 / 模型 / 人设 / 记忆 / 情绪 / 语音）
 ├── requirements.txt             # Python 依赖清单
 ├── core/
 │   ├── config.py                # 配置加载与校验（api_key 支持环境变量 DEEPSEEK_API_KEY）
 │   ├── personality.py           # 奶龙人设（默认 System Prompt）
-│   ├── llm_client.py            # OpenAI 兼容接口封装 + 异常处理
+│   ├── llm_client.py            # OpenAI 兼容接口封装 + 异常处理 + chat_stream 流式
 │   ├── conversation.py          # 多轮上下文
 │   ├── memory.py                # 长期记忆（事实抽取 + bigram 相似度检索 + JSON 存储）
-│   └── emotion.py               # 动态情绪状态（含破防机制）
+│   ├── emotion.py               # 动态情绪状态（含破防机制）
+│   └── sentence_splitter.py     # 流式分句器（WebSocket 流式 TTS 用）
 ├── interfaces/
 │   ├── asr.py                   # faster-whisper 本地语音识别
 │   └── tts.py                   # GPT-SoVITS 语音合成
@@ -45,8 +46,10 @@ nailong/
 │   │   ├── app_backend.c/h      # HTTP 上传录音、接收回复音频
 │   │   ├── app_display.c/h      # LVGL 屏幕：状态栏 + 双方对话滚动区
 │   │   ├── app_wifi.c/h         # WiFi Station
+│   │   ├── lv_font_simhei_16.c  # GB2312 全量中文字体（16px 黑体，避免缺字方框）
 │   │   ├── idf_component.yml    # 组件依赖（esp-box-3 / button / esp_codec_dev）
 │   │   └── Kconfig.projbuild    # WiFi SSID / 后端地址 配置项
+│   ├── fonts/                   # 中文字体生成脚本（gen_chars.py + 字符集）
 │   ├── partitions.csv           # 自定义分区表（6MB factory）
 │   └── sdkconfig.defaults       # 默认编译配置
 ├── data/                        # 运行数据（聊天记录、记忆、调试音频，自动生成）
@@ -112,6 +115,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 | `GET /health` | 健康检查，返回 `{"status": "ok"}` |
 | `POST /chat` | 输入文字 `{"text": "..."}`，返回奶龙回复文字 + TTS 音频（base64） |
 | `POST /voice` | 输入音频 `{"audio_base64": "...", "audio_format": "wav"}`，先 ASR 识别再对话，返回识别文字 + 回复文字 + TTS 音频 |
+| `WS /ws/voice` | 流式语音端点：二进制分片音频 + 文本控制帧，服务端流式返回（ASR → LLM 逐 token → 分句 TTS 逐句下发），供低延迟语音交互使用 |
 
 ### 6. 语音模型（可选，仅语音功能需要）
 

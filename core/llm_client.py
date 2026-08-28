@@ -5,6 +5,8 @@
 封装 OpenAI 兼容接口（/chat/completions），统一异常处理。
 切换不同厂商 API 只需修改 config.yaml 中的 base_url 与 model，无需改动本文件。
 """
+import json
+
 import requests
 
 
@@ -82,3 +84,67 @@ class LLMClient:
             raise LLMError(f"接口返回格式异常，无法解析回复：{e}")
 
         return content.strip()
+
+    def chat_stream(self, messages: list):
+        """流式对话（SSE）：逐 token 产出回复文本增量。
+
+        供语音流水线「边收 token、边切句、边合成、边下发」使用，
+        无需等整段回复生成完毕。参数与 chat() 一致。
+
+        产出:
+            str: 每个 token 的文本片段（调用方自行拼接）
+
+        抛出:
+            LLMError: 网络 / 接口 / 密钥等错误
+        """
+        if not self.api_key or self.api_key.startswith("sk-在此"):
+            raise LLMError("尚未填写有效的 API 密钥，请编辑 config.yaml 中的 api_key。")
+
+        url = f"{self.base_url}/chat/completions"
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "stream": True,
+        }
+
+        try:
+            resp = requests.post(url, headers=headers, json=payload, timeout=self.timeout, stream=True)
+        except requests.exceptions.Timeout:
+            raise LLMError("请求超时啦，奶龙有点卡住~ 请检查网络或稍后重试。")
+        except requests.exceptions.ConnectionError:
+            raise LLMError("网络连接失败，奶龙连不上服务器了~ 请检查网络设置。")
+        except requests.exceptions.RequestException as e:
+            raise LLMError(f"网络请求出错：{e}")
+
+        if resp.status_code != 200:
+            detail = resp.text[:300]
+            if resp.status_code == 401:
+                raise LLMError("API 密钥无效或无权限（401），请检查 config.yaml 中的 api_key。")
+            if resp.status_code == 429:
+                raise LLMError("请求过于频繁或额度不足（429），请稍后重试或检查账户额度。")
+            raise LLMError(f"接口返回错误（HTTP {resp.status_code}）：{detail}")
+
+        # 逐行解析 SSE：data: {...}，遇 [DONE] 结束
+        try:
+            for line in resp.iter_lines(decode_unicode=True):
+                if not line or not line.startswith("data:"):
+                    continue
+                data = line[len("data:"):].strip()
+                if not data or data == "[DONE]":
+                    break
+                try:
+                    delta = json.loads(data)["choices"][0]["delta"]
+                except (ValueError, KeyError, IndexError):
+                    # 跳过非 content 帧（如 role / reasoning_content / usage）
+                    continue
+                content = delta.get("content")
+                if content:
+                    yield content
+        except requests.exceptions.RequestException as e:
+            raise LLMError(f"流式响应中断：{e}")

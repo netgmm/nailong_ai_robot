@@ -13,11 +13,13 @@
   python main.py            # 默认 0.0.0.0:8000
   uvicorn main:app --host 0.0.0.0 --port 8000
 """
+import asyncio
 import base64
+import json
 import sys
 import threading
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from pydantic import BaseModel
 
 from core.config import (
@@ -34,6 +36,7 @@ from core.emotion import EmotionalState
 from core.llm_client import LLMClient, LLMError
 from core.memory import MemoryStore, extract_facts
 from core.personality import build_system_prompt, resolve_system_prompt
+from core.sentence_splitter import SentenceSplitter
 from interfaces.asr import recognize_bytes, warmup
 from interfaces.tts import synthesize_speech
 
@@ -141,12 +144,57 @@ def _run_chat(user_input: str) -> str:
     return reply
 
 
-def _synthesize(reply: str) -> str | None:
-    """把回复文字合成为 TTS 音频，返回 base64；失败或未启用返回 None。"""
+def _run_chat_stream(user_input: str):
+    """流式执行一轮对话：逐 token 产出回复文本增量。
+
+    与 _run_chat 的【核心业务逻辑完全一致】（记忆检索 / 情绪更新 / 人设组装 /
+    失败回滚 / 事实抽取写入），只是 LLM 调用改为 stream=True 逐 token 产出。
+    调用方需已持有 _lock。
+
+    产出:
+        str: 回复文本增量（每个 token 一段）
+    """
+    _conv.add_user(user_input)
+
+    # 动态情绪：先根据本轮输入更新，再生成描述
+    emotion_desc = ""
+    if _emotional_state:
+        _emotional_state.update(user_input)
+        emotion_desc = _emotional_state.describe()
+
+    # 长期记忆：检索与当前输入最相关的记忆
+    memories = _memory_store.retrieve(user_input, _mem_cfg["top_k"]) if _memory_store else []
+
+    # 动态组装 system 提示词（人设 + 情绪 + 记忆）
+    _conv.set_system_prompt(build_system_prompt(_base_prompt, emotion_desc, memories))
+
+    # 流式调用大模型，捕获可预期错误
+    try:
+        reply_parts = []
+        for token in _client.chat_stream(_conv.get_messages()):
+            reply_parts.append(token)
+            yield token
+    except LLMError as e:
+        # 回滚刚加入的用户消息，避免污染上下文
+        if _conv.history and _conv.history[-1]["role"] == "user":
+            _conv.history.pop()
+        raise
+
+    reply = "".join(reply_parts)
+    _conv.add_assistant(reply)
+
+    # 抽取本轮事实，写入长期记忆（失败静默）
+    if _memory_store:
+        for fact in extract_facts(_client, user_input, reply):
+            _memory_store.add_fact(fact["content"], fact["importance"])
+
+
+def _synthesize_audio(reply: str) -> bytes | None:
+    """把回复文字合成为 TTS 音频，返回 WAV 字节；失败或未启用返回 None。"""
     if not _tts_cfg["enabled"]:
         return None
     try:
-        audio = synthesize_speech(
+        return synthesize_speech(
             reply,
             api_url=_tts_cfg["api_url"],
             ref_audio_path=_tts_cfg["ref_audio_path"],
@@ -155,9 +203,14 @@ def _synthesize(reply: str) -> str | None:
             text_language=_tts_cfg["text_language"],
             timeout=_tts_cfg["timeout"],
         )
-        return base64.b64encode(audio).decode("ascii")
     except Exception:
         return None
+
+
+def _synthesize(reply: str) -> str | None:
+    """把回复文字合成为 TTS 音频，返回 base64；失败或未启用返回 None。"""
+    audio = _synthesize_audio(reply)
+    return base64.b64encode(audio).decode("ascii") if audio else None
 
 
 # ---------- 接口 ----------
@@ -253,6 +306,126 @@ def voice(req: VoiceRequest):
             return ChatResponse(asr_text=user_input, text="", error=str(e))
 
     return ChatResponse(text=reply, audio_base64=_synthesize(reply), asr_text=user_input)
+
+
+# ---------- WebSocket 流式端点（降低语音对话延迟） ----------
+
+async def _handle_voice_round(ws: WebSocket, audio_data: bytes):
+    """处理一轮语音：ASR → 流式对话 → 分句 TTS → 逐句二进制下发。"""
+    # 1. ASR 转文字（CPU 密集，丢线程池）
+    def _recognize():
+        return recognize_bytes(
+            audio_data,
+            suffix=".wav",
+            model_size=_asr_cfg["model_size"],
+            device=_asr_cfg["device"],
+            compute_type=_asr_cfg["compute_type"],
+            language=_asr_cfg["language"],
+        ).strip()
+
+    try:
+        user_input = await asyncio.to_thread(_recognize)
+    except Exception as e:
+        await ws.send_text(json.dumps({"type": "error", "message": f"语音识别失败：{e}"}))
+        return
+
+    if not user_input:
+        await ws.send_text(json.dumps({"type": "error", "message": "未识别到有效语音内容"}))
+        return
+    await ws.send_text(json.dumps({"type": "asr", "text": user_input}))
+
+    # 2. 流式对话 + 分句 + 逐句合成
+    out_q = asyncio.Queue()
+    loop = asyncio.get_running_loop()
+
+    def _producer():
+        """线程内：LLM 逐 token 产出 → 分句器切句 → 塞入 asyncio 队列。"""
+        splitter = SentenceSplitter()
+
+        def emit(item):
+            loop.call_soon_threadsafe(out_q.put_nowait, item)
+
+        try:
+            with _lock:
+                for token in _run_chat_stream(user_input):
+                    for sent in splitter.push(token):
+                        emit(("sentence", sent))
+                for sent in splitter.flush():
+                    emit(("sentence", sent))
+        except LLMError as e:
+            emit(("error", str(e)))
+        finally:
+            emit(("done", None))
+
+    producer_task = asyncio.create_task(asyncio.to_thread(_producer))
+
+    # 3. 消费：每句合成 TTS 立即二进制下发（合成与 LLM 生成并行）
+    while True:
+        kind, payload = await out_q.get()
+        if kind == "done":
+            break
+        if kind == "error":
+            await ws.send_text(json.dumps({"type": "error", "message": payload}))
+            break
+        # kind == "sentence"
+        sentence = payload
+        if len(sentence) < 2:
+            continue  # 过短句子不合成，避免 GPT-SoVITS 异常
+        await ws.send_text(json.dumps({"type": "sentence", "text": sentence}))
+        audio = await asyncio.to_thread(_synthesize_audio, sentence)
+        if audio:
+            await ws.send_bytes(audio)
+
+    await producer_task
+    await ws.send_text(json.dumps({"type": "end"}))
+
+
+@app.websocket("/ws/voice")
+async def ws_voice(ws: WebSocket):
+    """语音流式端点。
+
+    客户端协议（文本帧 / 二进制帧混用）：
+      - 文本帧 {"type":"start"}           开始新一段录音缓冲
+      - 二进制帧                          音频分片（WAV 格式，累积到缓冲）
+      - 文本帧 {"type":"end"}             该段说完，触发识别与流式回复
+
+    服务端下发：
+      - 文本帧 {"type":"asr","text":...}            识别出的用户文字
+      - 文本帧 {"type":"sentence","text":...}        切出的一句话
+      - 二进制帧                                    该句的 TTS WAV 音频
+      - 文本帧 {"type":"error","message":...}        出错
+      - 文本帧 {"type":"end"}                        本轮结束
+    """
+    await ws.accept()
+    audio_buf = bytearray()
+    try:
+        while True:
+            message = await ws.receive()
+            mtype = message.get("type", "")
+            if mtype == "websocket.disconnect":
+                break
+            if mtype == "websocket.receive":
+                if message.get("bytes") is not None:
+                    audio_buf.extend(message["bytes"])
+                elif message.get("text") is not None:
+                    try:
+                        data = json.loads(message["text"])
+                    except json.JSONDecodeError:
+                        continue
+                    cmd = data.get("type")
+                    if cmd == "start":
+                        audio_buf.clear()
+                    elif cmd == "end":
+                        if audio_buf:
+                            await _handle_voice_round(ws, bytes(audio_buf))
+                        audio_buf.clear()
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        try:
+            await ws.close()
+        except Exception:
+            pass
 
 
 if __name__ == "__main__":

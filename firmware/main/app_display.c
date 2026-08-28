@@ -16,9 +16,10 @@ static lv_obj_t *s_chat_area = NULL;
 static lv_obj_t *s_chat_label = NULL;
 static char s_chat[CHAT_MAX] = "";
 
-/* 中文字体：LVGL 内置思源黑体 SC 16px CJK（LVGL 9.x 无 simsun 字体），
- * 需在 LVGL 配置中启用 LV_FONT_SOURCE_HAN_SANS_SC_16_CJK 或设为默认字体 */
-LV_FONT_DECLARE(lv_font_source_han_sans_sc_16_cjk);
+/* 中文字体：GB2312 全量（7446 字，含汉字/中文标点/假名等），
+ * 由 Windows 黑体 simhei.ttf 用 lv_font_conv 生成（见 fonts/ 目录生成脚本），
+ * 覆盖日常对话文本，避免 LVGL 内置 1338 字 CJK 字体大量缺字显示方框。 */
+LV_FONT_DECLARE(lv_font_simhei_16);
 
 esp_err_t app_display_init(void)
 {
@@ -37,7 +38,7 @@ esp_err_t app_display_init(void)
     s_status_label = lv_label_create(scr);
     lv_label_set_text(s_status_label, "待机");
     lv_obj_set_style_text_color(s_status_label, lv_color_hex(0x8FE3CF), 0);
-    lv_obj_set_style_text_font(s_status_label, &lv_font_source_han_sans_sc_16_cjk, 0);
+    lv_obj_set_style_text_font(s_status_label, &lv_font_simhei_16, 0);
     lv_obj_align(s_status_label, LV_ALIGN_TOP_LEFT, 8, 4);
 
     /* 对话滚动区域（320x240 屏幕，留出顶部状态栏） */
@@ -54,7 +55,7 @@ esp_err_t app_display_init(void)
     lv_label_set_long_mode(s_chat_label, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(s_chat_label, 288);
     lv_obj_set_style_text_color(s_chat_label, lv_color_hex(0xEEEEEE), 0);
-    lv_obj_set_style_text_font(s_chat_label, &lv_font_source_han_sans_sc_16_cjk, 0);
+    lv_obj_set_style_text_font(s_chat_label, &lv_font_simhei_16, 0);
     lv_label_set_text(s_chat_label, "");
 
     ESP_LOGI(TAG, "display ready");

@@ -5,6 +5,7 @@ idf_component_register(
         "app_backend.c"
         "app_audio.c"
         "app_display.c"
+        "lv_font_simhei_16.c"
     INCLUDE_DIRS
         "."
     REQUIRES
