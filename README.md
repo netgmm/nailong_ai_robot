@@ -75,7 +75,16 @@ pip install -r requirements.txt
 
 ### 3. 配置
 
-编辑 `config.yaml`，至少配置 `llm` 段：
+首次使用先复制示例配置：
+
+```bash
+# Windows
+copy config.example.yaml config.yaml
+# Linux / macOS
+cp config.example.yaml config.yaml
+```
+
+然后编辑 `config.yaml`，至少配置 `llm` 段：
 
 ```yaml
 llm:
