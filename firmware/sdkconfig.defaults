@@ -18,10 +18,11 @@ CONFIG_ESP_DEFAULT_CPU_FREQ_MHZ_240=y
 # 优化等级（音频/HTTP 处理建议 O2）
 CONFIG_COMPILER_OPTIMIZATION_PERF=y
 
-# LVGL 内置中文字体（屏幕显示对话需要）
-# 若 esp-box 的 lv_conf.h 覆盖了 Kconfig 配置（未走 LV_CONF_SKIP），
-# 需同时在 <esp-box>/bsp/display/lv_conf.h 里打开 LV_FONT_SIMSUN_16_CJK。
-CONFIG_LV_FONT_SIMSUN_16_CJK=y
+# LVGL 中文字体（屏幕显示对话需要）：思源黑体 SC 16px CJK，
+# 同时设为默认字体，这样对话区/状态栏不单独设字体也能显示中文。
+# 注意：LVGL 9.x 已移除 simsun 字体；本项目走 Kconfig 配置（LV_CONF_SKIP=y），
+# esp-box 的 lv_conf.h 不会生效。
+CONFIG_LV_FONT_DEFAULT_SOURCE_HAN_SANS_SC_16_CJK=y
 
 # 自定义分区表：默认 factory 分区只有 1MB，装不下带 LVGL 的固件
 CONFIG_PARTITION_TABLE_CUSTOM=y

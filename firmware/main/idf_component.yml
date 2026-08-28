@@ -1,11 +1,7 @@
-# ESP-IDF 组件依赖
 dependencies:
-  # esp-box BSP：提供 ES8311/ES7210 codec 初始化、音频/显示/按键板级 API
-  espressif/esp-box: "3.0.*"
-  # button 固定到 3.x：esp_lvgl_port 1.4.0 用的是 button 旧 API
-  # （iot_button_create 单参数），默认解析到 4.2.0 新 API 会编译失败
-  espressif/button: "^3.0.0"
-  # esp_codec_dev 固定 1.1.0：1.2+ 硬编码使用新 I2C 驱动（USE_IDF_I2C_MASTER），
-  # 与 esp-box 3.0.5 的旧 I2C 驱动混用会导致运行时
-  # "CONFLICT! driver_ng is not allowed to be used with this old driver" 崩溃
-  espressif/esp_codec_dev: "1.1.0"
+  espressif/esp-box-3:
+    version: "^3.2.0"
+  espressif/button:
+    version: "^4.0.0"
+  espressif/esp_codec_dev:
+    version: "~1.5"

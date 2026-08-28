@@ -156,7 +156,7 @@ void app_main(void)
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "button init failed: %s", esp_err_to_name(ret));
     } else {
-        iot_button_register_cb(btns[BSP_BUTTON_CONFIG], BUTTON_SINGLE_CLICK, record_btn_click, NULL);
+       iot_button_register_cb(btns[BSP_BUTTON_CONFIG], BUTTON_SINGLE_CLICK, NULL, record_btn_click, NULL);
     }
 
     /* WiFi 连接（阻塞，最多 20s） */
