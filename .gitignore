@@ -12,6 +12,11 @@ data/
 # ===== 本地配置（含 API 密钥，严禁提交）=====
 config.yaml
 
+# ===== GPT-SoVITS 模型文件（约 277MB，超 GitHub 100MB 限制，走 Release 分发）=====
+nailong_sovits/*.ckpt
+nailong_sovits/*.pth
+nailong_sovits/*.wav
+
 # ===== ESP-IDF 构建产物 =====
 firmware/build/
 firmware/sdkconfig

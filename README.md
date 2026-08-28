@@ -50,6 +50,7 @@ nailong/
 │   ├── partitions.csv           # 自定义分区表（6MB factory）
 │   └── sdkconfig.defaults       # 默认编译配置
 ├── data/                        # 运行数据（聊天记录、记忆、调试音频，自动生成）
+├── nailong_sovits/              # GPT-SoVITS 奶龙声线模型（README + Release 分发）
 └── docs/
     ├── 开发问题排查记录.md       # 开发过程问题排查活文档（现象/原因/解决）
     ├── 语音功能扩展方案.md
@@ -116,6 +117,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 
 - **ASR**：faster-whisper 本地模型（`config.yaml` 的 `asr` 段，默认 base / cpu / int8 / 中文），首次请求自动下载
 - **TTS**：GPT-SoVITS（本地启动 api，监听 `127.0.0.1:9880`），需在 `config.yaml` 的 `tts` 段填好 `ref_audio_path` 与 `prompt_text`
+- **奶龙声线模型**：`nailong_sovits/` 目录说明见 [nailong_sovits/README.md](nailong_sovits/README.md)。两个模型文件（合计约 277MB）超过 GitHub 单文件限制，通过仓库 **Release** 分发：[Release 下载](https://github.com/netgmm/nailong_ai_robot/releases)
 
 ## 四、固件（ESP32-S3-Box-3）
 
